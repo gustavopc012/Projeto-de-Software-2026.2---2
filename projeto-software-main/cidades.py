@@ -1,1 +1,0 @@
-cidades = ["Maceió", "Rio Largo", "Marechal Deodoro", "Satuba"]
