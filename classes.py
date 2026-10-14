@@ -225,7 +225,6 @@ class ResultadoCidade:
     @property
     def leitura(self) -> LeituraClima:
         return self._leitura
-
     @property
     def alertas_ativos(self) -> list:
         return self._alertas_ativos
