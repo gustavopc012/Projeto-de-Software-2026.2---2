@@ -1,23 +1,19 @@
 import requests
 from classes import (
     LeituraClima, ResultadoCidade, ProvedorOpenMeteo, ProvedorFicticio, ProvedorCache,
-    AlertaAlagamento, AlertaGeada, AlertaCalor, AlertaTempestade, NivelRisco,
-    ExportadorConsole, ExportadorCSV, ExportadorJSON
+    AlertaAlagamento, AlertaGeada, AlertaCalor, AlertaTempestade, AlertaVento, NivelRisco,
+    GeradorRelatorioCreator, GeradorConsoleCreator, GeradorCSVCreator, GeradorJSONCreator
 )
-from classes import AlertaVento
 from cidades import cidades
 
-# * RF6 [A/IF] — Provedores de dados intercambiáveis. 
+# RF6 [A/IF] — Provedores de dados intercambiáveis.
 provedor_base = ProvedorOpenMeteo()
-# provedor_base = ProvedorFicticio()  
+# provedor_base = ProvedorFicticio()
 provedor = ProvedorCache(provedor_base, ttl_segundos=300)
 
-# alertas = [AlertaCalor(), AlertaAlagamento(), AlertaGeada(), AlertaTempestade()]
 alertas = [AlertaCalor(), AlertaAlagamento(), AlertaGeada(), AlertaTempestade(), AlertaVento()]
 
-# * RF5 [P] — Avaliação uniforme. O sistema deve avaliar uma coleção mista de alertas e
-# * produzir uma avaliação de risco para cada um, sem que a lógica de avaliação saiba qual
-# * categoria específica está processando.
+# RF5 [P] — Avaliação uniforme.
 def avaliar_alertas_ativos(leitura):
     ativos = []
     for alerta in alertas:
@@ -26,18 +22,32 @@ def avaliar_alertas_ativos(leitura):
             ativos.append((alerta.mensagem_alerta(leitura), nivel))
     return ativos
 
+# Uso do padrão BUILDER para montar ResultadoCidade passo a passo
 def coletar_resultados(provedor, lista_cidades):
     resultados = []
     for cidade in lista_cidades:
+        builder = ResultadoCidade.Builder(cidade)
         try:
             leitura = provedor.obter_leitura(cidade)
             alertas_ativos = avaliar_alertas_ativos(leitura)
-            resultados.append(ResultadoCidade(cidade, leitura, alertas_ativos, ""))
+            resultado = (
+                builder
+                .com_leitura(leitura)
+                .com_alertas(alertas_ativos)
+                .build()
+            )
         except ValueError as e:
-            resultados.append(ResultadoCidade(cidade, None, [], str(e)))
+            resultado = builder.com_erro(str(e)).build()
         except requests.RequestException as e:
-            resultados.append(ResultadoCidade(cidade, None, [], f"falha de rede: {e}"))
+            resultado = builder.com_erro(f"falha de rede: {e}").build()
+        
+        resultados.append(resultado)
     return resultados
+
+# Cliente do FACTORY METHOD: trabalha apenas com a abstração GeradorRelatorioCreator
+def executar_relatorio(criador: GeradorRelatorioCreator, lista_cidades: list[str]):
+    resultados = coletar_resultados(provedor, lista_cidades)
+    criador.gerar_relatorio(resultados)
 
 def demonstrar_rf2():
     leitura_teste = LeituraClima("Maceió", 34.0, 85.0, 10.0)
@@ -57,6 +67,14 @@ def demonstrar_rf2():
     print(f"Risco de Alagamento agora: {alerta_alagamento.avaliar_risco(leitura_teste).value}\n")
             
 def main():
+    # Mapa de Creators (Factory Method) para relatórios consolidados
+    criadores_consolidados = {
+        "2": GeradorConsoleCreator(),
+        "3": GeradorCSVCreator("relatorio.csv"),
+        "4": GeradorJSONCreator("relatorio.json"),
+    }
+    criador_console = GeradorConsoleCreator()
+
     print("^-^ Sistema de Alertas Meteorológicos Multifonte ^-^")
     while True:
         print("1 - Relatório de uma cidade")
@@ -73,35 +91,24 @@ def main():
                 print(f"-> {cidade}")
             cidade_digitada = input("Digite o nome da cidade que deseja: ")
             if cidade_digitada in cidades:
-                res = coletar_resultados(provedor, [cidade_digitada])
-                ExportadorConsole().exportar(res)
+                executar_relatorio(criador_console, [cidade_digitada])
             else:
                 print(f"Erro: A cidade '{cidade_digitada}' não está na lista.")
-            # * RF7 [C] — Monitoramento de múltiplas localidades. O sistema deve monitorar várias
-            # * localidades e produzir um único relatório consolidado.
-        elif escolha == "2":
-            res = coletar_resultados(provedor, cidades)
-            ExportadorConsole().exportar(res)
 
-        elif escolha == "3":
-            res = coletar_resultados(provedor, cidades)
-            ExportadorCSV().exportar(res, "relatorio.csv")
-            print("\nRelatório CSV gerado com sucesso!\n")
-
-        elif escolha == "4":
-            res = coletar_resultados(provedor, cidades)
-            ExportadorJSON().exportar(res, "relatorio.json")
-            print("\nRelatório JSON gerado com sucesso!\n")
+        elif escolha in criadores_consolidados:
+            executar_relatorio(criadores_consolidados[escolha], cidades)
 
         elif escolha == "5":
             cidade_digitada = input("Digite o nome da cidade que deseja: ")
-            res = coletar_resultados(provedor, [cidade_digitada])
-            ExportadorConsole().exportar(res)
+            executar_relatorio(criador_console, [cidade_digitada])
+
         elif escolha == "6":
             demonstrar_rf2()
+
         elif escolha == "7":
             break    
         else:
             print("Escolha um número existente.")
             
-main()
+if __name__ == "__main__":
+    main()

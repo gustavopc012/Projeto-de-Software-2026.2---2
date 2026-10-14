@@ -210,14 +210,14 @@ class ProvedorCache(ProvedorClima):
         self._cache[cidade] = (nova_leitura, agora)
         return nova_leitura
 
-# * -------------
+# ------------- PADRÃO 1: BUILDER (em ResultadoCidade) -------------
 class ResultadoCidade:
-    def __init__(self, cidade: str, leitura: LeituraClima, alertas_ativos: list, erro: str):
-        self._cidade = cidade
-        self._leitura = leitura
-        self._alertas_ativos = list(alertas_ativos)
-        self._erro = erro
-        
+    def __init__(self, builder: "ResultadoCidade.Builder"):
+        self._cidade = builder.cidade
+        self._leitura = builder.leitura
+        self._alertas_ativos = list(builder.alertas_ativos)
+        self._erro = builder.erro
+
     @property
     def cidade(self) -> str:
         return self._cidade
@@ -225,7 +225,6 @@ class ResultadoCidade:
     @property
     def leitura(self) -> LeituraClima:
         return self._leitura
-    
     @property
     def alertas_ativos(self) -> list:
         return self._alertas_ativos
@@ -233,17 +232,50 @@ class ResultadoCidade:
     @property
     def erro(self) -> str:
         return self._erro
-    
-# * RF9 [A] — Múltiplos formatos de relatório. O sistema deve exportar relatórios em pelo
-# * menos dois formatos, com a escolha do formato desacoplada da geração do relatório.
 
+    class Builder:
+        def __init__(self, cidade: str):
+            if not cidade or not cidade.strip():
+                raise ValueError("O nome da cidade é obrigatório.")
+            self.cidade = cidade
+            self.leitura = None
+            self.alertas_ativos = []
+            self.erro = ""
+
+        def com_leitura(self, leitura: LeituraClima) -> "ResultadoCidade.Builder":
+            self.leitura = leitura
+            return self
+
+        def com_alertas(self, alertas: list) -> "ResultadoCidade.Builder":
+            self.alertas_ativos = list(alertas)
+            return self
+
+        def com_erro(self, mensagem_erro: str) -> "ResultadoCidade.Builder":
+            self.erro = mensagem_erro
+            return self
+
+        def build(self) -> "ResultadoCidade":
+            # Validação de consistência antes de o objeto existir
+            if self.leitura is None and not self.erro:
+                raise ValueError(f"Resultado inválido para '{self.cidade}': informe uma leitura ou um erro.")
+            if self.leitura is not None and self.erro:
+                raise ValueError(f"Resultado inconsistente para '{self.cidade}': não pode ter leitura e erro simultaneamente.")
+            return ResultadoCidade(self)
+
+
+# RF9 [A] — Múltiplos formatos de relatório.
+# ------------- PADRÃO 2: FACTORY METHOD (nos Exportadores) -------------
+
+# Product (Interface comum do produto criado)
 class ExportadorRelatorio(ABC):
     @abstractmethod
-    def exportar(self, resultados: list[ResultadoCidade], destino: str = None) -> None:
+    def exportar(self, resultados: list[ResultadoCidade]) -> None:
         pass
 
+
+# Concrete Products (Produtos Concretos)
 class ExportadorConsole(ExportadorRelatorio):
-    def exportar(self, resultados: list[ResultadoCidade], destino: str = None) -> None:
+    def exportar(self, resultados: list[ResultadoCidade]) -> None:
         print("\n=== RELATÓRIO CLIMÁTICO ===")
         for res in resultados:
             if res.erro:
@@ -253,13 +285,16 @@ class ExportadorConsole(ExportadorRelatorio):
                 for msg, n in res.alertas_ativos:
                     print(f"{n.value}: {msg}\n")
                 if not res.alertas_ativos:
-                     print("Sem Alertas Ativos")
+                    print("Sem Alertas Ativos")
             print("===========================")
-                
+
 
 class ExportadorCSV(ExportadorRelatorio):
-    def exportar(self, resultados: list[ResultadoCidade], destino: str = "relatorio.csv") -> None:
-        with open(destino, "w", newline="", encoding="utf-8-sig") as file:
+    def __init__(self, destino: str = "relatorio.csv"):
+        self._destino = destino
+
+    def exportar(self, resultados: list[ResultadoCidade]) -> None:
+        with open(self._destino, "w", newline="", encoding="utf-8-sig") as file:
             escritor = csv.writer(file, delimiter=";")
             escritor.writerow(["Cidade", "Temperatura (°C)", "Umidade (%)", "Chuva (mm/h)", "Alertas ativos"])
 
@@ -273,9 +308,14 @@ class ExportadorCSV(ExportadorRelatorio):
                     else:
                         texto = "Sem alertas"
                     escritor.writerow([res.cidade, res.leitura.temperatura, res.leitura.umidade, res.leitura.chuva, texto])
+        print(f"\nRelatório CSV ('{self._destino}') gerado com sucesso!\n")
+
 
 class ExportadorJSON(ExportadorRelatorio):
-    def exportar(self, resultados: list[ResultadoCidade], destino: str = "relatorio.json") -> None:
+    def __init__(self, destino: str = "relatorio.json"):
+        self._destino = destino
+
+    def exportar(self, resultados: list[ResultadoCidade]) -> None:
         dados = []
         for res in resultados:
             if res.erro:
@@ -288,5 +328,40 @@ class ExportadorJSON(ExportadorRelatorio):
                     "chuva": res.leitura.chuva,
                     "alertas": [{"mensagem": msg, "nivel": nivel.value} for msg, nivel in res.alertas_ativos]
                 })
-        with open(destino, "w", encoding="utf-8") as f:
+        with open(self._destino, "w", encoding="utf-8") as f:
             json.dump(dados, f, ensure_ascii=False, indent=4)
+        print(f"\nRelatório JSON ('{self._destino}') gerado com sucesso!\n")
+
+
+# Creator (Declara o Factory Method e a lógica que usa o produto)
+class GeradorRelatorioCreator(ABC):
+    @abstractmethod
+    def criar_exportador(self) -> ExportadorRelatorio:
+        """Factory Method que as subclasses devem sobrescrever."""
+        pass
+
+    def gerar_relatorio(self, resultados: list[ResultadoCidade]) -> None:
+        exportador = self.criar_exportador()
+        exportador.exportar(resultados)
+
+
+# Concrete Creators (Decidem qual classe concreta instanciar)
+class GeradorConsoleCreator(GeradorRelatorioCreator):
+    def criar_exportador(self) -> ExportadorRelatorio:
+        return ExportadorConsole()
+
+
+class GeradorCSVCreator(GeradorRelatorioCreator):
+    def __init__(self, destino: str = "relatorio.csv"):
+        self._destino = destino
+
+    def criar_exportador(self) -> ExportadorRelatorio:
+        return ExportadorCSV(self._destino)
+
+
+class GeradorJSONCreator(GeradorRelatorioCreator):
+    def __init__(self, destino: str = "relatorio.json"):
+        self._destino = destino
+
+    def criar_exportador(self) -> ExportadorRelatorio:
+        return ExportadorJSON(self._destino)

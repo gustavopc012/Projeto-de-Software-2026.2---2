@@ -31,3 +31,21 @@ código solicitante.
 1. Certifique-se de ter o Python 3.10+ e a biblioteca `requests` instalados:
    ```bash
    pip install requests
+
+--------------------------------------------------------------------------------------------------------------------------
+
+## Padrões de Projeto Criacionais Aplicados (Etapa 2)
+
+Nesta etapa, refatoramos o projeto aplicando dois padrões criacionais do catálogo GoF:
+
+### 1. Builder (`ResultadoCidade.Builder`)
+
+* **Onde foi aplicado:** Na construção dos objetos imutáveis `ResultadoCidade` (em `classes.py` e utilizado em `coletar_resultados()` no `main.py`).
+* **Problema identificado no código original:** A classe `ResultadoCidade` representava dois cenários distintos (sucesso na leitura climática com alertas ativos ou falha graciosa de rede/validação do RF8) através de um único construtor posicional. Isso obrigava o código cliente a passar argumentos vazios ou nulos sem semântica clara (`ResultadoCidade(cidade, leitura, alertas_ativos, "")` ou `ResultadoCidade(cidade, None, [], str(e))`).
+* **Justificativa e Solução:** Implementamos um `Builder` interno com interface fluente (`.com_leitura()`, `.com_alertas()`, `.com_erro()`, `.build()`). Isso eliminou os parâmetros posicionais nulos/vazios, manteve a imutabilidade de `ResultadoCidade` após sua criação e centralizou a validação de consistência no método `build()` (garantindo que um resultado nunca exista sem leitura e sem erro ao mesmo tempo).
+
+### 2. Factory Method (`GeradorRelatorioCreator`)
+
+* **Onde foi aplicado:** Na hierarquia de geração e exportação de relatórios do RF9 (`GeradorRelatorioCreator` e suas subclasses `GeradorConsoleCreator`, `GeradorCSVCreator` e `GeradorJSONCreator` em `classes.py`).
+* **Problema identificado no código original:** O código cliente (`main.py`) estava diretamente acoplado às classes concretas de exportação (`ExportadorConsole`, `ExportadorCSV`, `ExportadorJSON`), instanciando-as manualmente dentro de blocos condicionais (`if/elif`) no loop principal.
+* **Justificativa e Solução:** Criamos a classe abstrata `GeradorRelatorioCreator` contendo o **Factory Method** `criar_exportador()` e o método de operação `gerar_relatorio()`. Cada formato ganhou seu próprio `ConcreteCreator`. Assim, o `main.py` deixou de conhecer e importar as classes concretas dos exportadores, permitindo adicionar novos formatos de exportação no futuro (ex.: PDF ou HTML) apenas criando uma nova subclasse de `Creator`, sem modificar a lógica de execução do relatório.
