@@ -4,6 +4,7 @@ from enum import Enum
 import json
 import csv
 from api import obter_localizacao_cidade, buscar_previsao
+from api import OpenMeteoFacade
 
 class NivelRisco(Enum):
     NENHUM = "NENHUM"
@@ -21,7 +22,7 @@ class LeituraClima:
         self._umidade = float(umidade)
         self._chuva = float(chuva) # Medida em mm
 
-    # * RF1[E]: Dados climáticos protegidos. (Os dados climáticos obtidos da API jamais podem existir em estado inválido ou inconsistente.)
+    # RF1[E]: Dados climáticos protegidos. (Os dados climáticos obtidos da API jamais podem existir em estado inválido ou inconsistente.)
     def _validar_dados(self, temperatura: float, umidade: float, chuva: float) -> None:
         if temperatura is None or umidade is None or chuva is None:
             raise ValueError("Dado ausente na resposta da API")
@@ -50,12 +51,12 @@ class LeituraClima:
 
     def __repr__(self):
         # Quando faz um print em um objeto da classe, mostra a mensagem 
-        # * Ex.: maceio = LeituraClima("Maceió", 22.6, 85, 0)
-        # * Ex.: print(maceio) // exibe <Maceió, 22.6°C, 85%, 0mm>
+        # Ex.: maceio = LeituraClima("Maceió", 22.6, 85, 0)
+        # Ex.: print(maceio) // exibe <Maceió, 22.6°C, 85%, 0mm>
     
         return f"<{self._cidade}, {self._temperatura}°C, {self._umidade}%, {self._chuva}mm>"
 
-# * RF3 [A/H]: Múltiplas categorias de alerta. -----------------------
+# RF3 [A/H]: Múltiplas categorias de alerta. -----------------------
 
 class Alerta(ABC):
     # Classe Abstrata, serve de molde para as outras
@@ -68,7 +69,7 @@ class Alerta(ABC):
     def avaliar_risco(self, leitura: LeituraClima) -> NivelRisco:
         pass
 
-    # * RF4 [P]: Alertas autodescritivos.
+    # RF4 [P]: Alertas autodescritivos.
     @abstractmethod
     def mensagem_alerta(self, leitura: LeituraClima) -> str:
         pass
@@ -157,22 +158,28 @@ class AlertaVento(Alerta):
  
 # ! Provedores --------------------
 
+# Target
 class ProvedorClima(ABC):
-    # Classe Abstrata, serve de molde para as outras
     @abstractmethod
-    def obter_leitura(self, cidade) -> LeituraClima:
-        pass
-    
-class ProvedorOpenMeteo(ProvedorClima):
     def obter_leitura(self, cidade: str) -> LeituraClima:
-        lat, lon = obter_localizacao_cidade(cidade)
-        dados = buscar_previsao(lat, lon)
+        pass
+
+# * PADRÃO ESTRUTURAL: ADAPTER
+# Traduz a resposta JSON externa da Facade para o objeto de domínio 'LeituraClima'.
+class ProvedorOpenMeteo(ProvedorClima):
+    def __init__(self):
+        self._facade = OpenMeteoFacade() # O Adaptee (a quem estamos adaptando)
+
+    def obter_leitura(self, cidade: str) -> LeituraClima:
+        # A API externa retorna um JSON (dicionário cru)
+        dados = self._facade.obter_clima_completo(cidade)
 
         try:
             atual = dados["current"]
         except KeyError:
             raise ValueError("Resposta da API em formato inesperado")
 
+        # O Adapter "traduz" esse JSON na interface/classe que o sistema espera
         return LeituraClima(
             cidade=cidade,
             temperatura=atual.get("temperature_2m"),
@@ -182,17 +189,11 @@ class ProvedorOpenMeteo(ProvedorClima):
     
 class ProvedorFicticio(ProvedorClima):
     def obter_leitura(self, cidade: str) -> LeituraClima:
-        return LeituraClima(
-            cidade=cidade,
-            temperatura=43.0,
-            umidade=65.0,
-            chuva=80.0,
-        )
+        return LeituraClima(cidade=cidade, temperatura=43.0, umidade=65.0, chuva=80.0)
 
-# * RF10 [E] — Cache transparente. Requisições repetidas para a mesma localidade em um
-# * curto intervalo não devem sempre gerar nova chamada de rede, e isso deve ser invisível para o
-# * código solicitante.
-
+# * PADRÃO ESTRUTURAL: PROXY (Caching Proxy)
+# * RF10 [E] — Cache transparente. 
+# Controla o acesso ao provedor real, interceptando chamadas para poupar a rede.
 class ProvedorCache(ProvedorClima):
     def __init__(self, provedor_real: ProvedorClima, ttl_segundos: int = 300):
         self._provedor_real = provedor_real
@@ -201,15 +202,17 @@ class ProvedorCache(ProvedorClima):
 
     def obter_leitura(self, cidade: str) -> LeituraClima:
         agora = time.time()
+        # Se tem no cache e está válido, intercepta e nem chama o provedor real
         if cidade in self._cache:
             leitura, timestamp = self._cache[cidade]
             if agora - timestamp < self._ttl:
                 return leitura
         
+        # Se não tem, acessa o provedor real (controlando o acesso a ele)
         nova_leitura = self._provedor_real.obter_leitura(cidade)
         self._cache[cidade] = (nova_leitura, agora)
         return nova_leitura
-
+    
 # ------------- PADRÃO 1: BUILDER (em ResultadoCidade) -------------
 class ResultadoCidade:
     def __init__(self, builder: "ResultadoCidade.Builder"):
