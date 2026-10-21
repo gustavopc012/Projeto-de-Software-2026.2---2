@@ -32,7 +32,7 @@ código solicitante.
    ```bash
    pip install requests
 
---------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------
 
 ## Padrões de Projeto Criacionais Aplicados (Etapa 2)
 
@@ -49,3 +49,24 @@ Nesta etapa, refatoramos o projeto aplicando dois padrões criacionais do catál
 * **Onde foi aplicado:** Na hierarquia de geração e exportação de relatórios do RF9 (`GeradorRelatorioCreator` e suas subclasses `GeradorConsoleCreator`, `GeradorCSVCreator` e `GeradorJSONCreator` em `classes.py`).
 * **Problema identificado no código original:** O código cliente (`main.py`) estava diretamente acoplado às classes concretas de exportação (`ExportadorConsole`, `ExportadorCSV`, `ExportadorJSON`), instanciando-as manualmente dentro de blocos condicionais (`if/elif`) no loop principal.
 * **Justificativa e Solução:** Criamos a classe abstrata `GeradorRelatorioCreator` contendo o **Factory Method** `criar_exportador()` e o método de operação `gerar_relatorio()`. Cada formato ganhou seu próprio `ConcreteCreator`. Assim, o `main.py` deixou de conhecer e importar as classes concretas dos exportadores, permitindo adicionar novos formatos de exportação no futuro (ex.: PDF ou HTML) apenas criando uma nova subclasse de `Creator`, sem modificar a lógica de execução do relatório.
+
+--------------------------------------------------------------------------------------------------------------------------
+
+## Padrões de Projeto Estruturais Aplicados (Etapa 3)
+
+Após a aula sobre Padrões Estruturais, identificamos pontos no sistema onde a composição de classes poderia reduzir o acoplamento com a rede e melhorar a flexibilidade, aplicando **três** padrões estruturais do catálogo GoF:
+
+### 1. Facade (`OpenMeteoFacade` em `api.py`)
+* **Problema atacado:** O fluxo para consultar o clima na API do Open-Meteo era complexo e fragmentado. Primeiro, exigia-se uma chamada HTTP de geocodificação para transformar o nome da cidade em Latitude/Longitude. Com as coordenadas em mãos, era necessária uma segunda chamada HTTP para obter o clima em si. Isso gerava um conhecimento excessivo sobre o funcionamento do subsistema espalhado no código.
+* **Método usado:** Criamos a classe `OpenMeteoFacade` com um único método `obter_clima_completo(cidade)`, que orquestra as duas requisições internamente.
+* **Porquê escolhemos:** O Facade forneceu uma "porta de entrada simples para um subsistema complicado". Ele isola toda a complexidade de rotas, navegação em URLs e tratamento de JSON, oferecendo ao restante da aplicação uma interface clara e de alto nível.
+
+### 2. Adapter (`ProvedorOpenMeteo` em `classes.py`)
+* **Problema atacado:** O núcleo do nosso sistema de Alertas foi desenhado para avaliar objetos de domínio altamente validados (`LeituraClima`). Contudo, o Facade da API externa retorna um Dicionário cru (JSON) com chaves muito específicas (`temperature_2m`, `relative_humidity_2m`).
+* **Método usado:** O `ProvedorOpenMeteo` foi construído como um **Adapter** de Objeto. Ele assina o contrato esperado pelo sistema (a interface `ProvedorClima`), abraça o Facade (o *Adaptee*) e traduz o JSON em instâncias de `LeituraClima`.
+* **Porquê escolhemos:** O Adapter resolve a incompatibilidade estrutural. Ele atua como uma fronteira: o nosso sistema não sabe o que é JSON e a API não sabe o que é `LeituraClima`. O acoplamento com o provedor fica inteiramente contido nessa classe.
+
+### 3. Proxy (`ProvedorCache` em `classes.py` resolvendo o RF10)
+* **Problema atacado:** Consultar APIs externas gasta banda, atrasa a execução e frequentemente esbarra em *rate limits* (bloqueios por excesso de chamadas). Precisávamos mitigar isso sem poluir a rotina principal (que apenas solicita os dados).
+* **Método usado:** Formalizamos a classe `ProvedorCache` como um **Virtual/Caching Proxy**. Ela herda da mesma abstração `ProvedorClima` do provedor real, mas seu comportamento intercepta o método `obter_leitura`.
+* **Porquê escolhemos:** Segundo a definição GoF, o Proxy "controla o acesso ao objeto real". Quando o `main.py` pede o clima de uma cidade, o Proxy avalia se já tem o dado em memória dentro do seu tempo de vida (TTL). Se tiver, ele "mente" para o cliente e devolve a resposta instantaneamente sem bater na rede; caso contrário, delega ao provedor real de forma completamente invisível, cumprindo perfeitamente a exigência técnica do Requisito Funcional 10.

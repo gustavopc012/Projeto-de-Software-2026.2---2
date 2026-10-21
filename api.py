@@ -1,41 +1,39 @@
 import requests
 
-def obter_localizacao_cidade(cidade: str) -> tuple[float, float]:
-    url = "https://geocoding-api.open-meteo.com/v1/search"
-    params = {
-        "name": cidade,
-        "count": 1,
-        "language": "pt",
-        "format": "json"
-    }
-    response = requests.get(url, params=params, timeout=10)
-    response.raise_for_status()
-    try:
-        data = response.json()
-    except ValueError:
-        raise ValueError("Respota de geodecodificação não é JSON válido")
+# * PADRÃO ESTRUTURAL: FACADE
+# Esconde o fluxo complexo de múltiplas chamadas à API em uma interface simples.
+class OpenMeteoFacade:
+    def __init__(self):
+        self._geo_url = "https://geocoding-api.open-meteo.com/v1/search"
+        self._weather_url = "https://api.open-meteo.com/v1/forecast"
 
-    resultados = data.get("results", [])
-    if not resultados:
-        raise ValueError(f"Localidade desconhecida: {cidade}")
+    def obter_clima_completo(self, cidade: str) -> dict:
+        """Porta de entrada unificada: faz a geocodificação e já busca a previsão."""
+        # Passo 1: Descobrir Lat e Lon
+        params_geo = {"name": cidade, "count": 1, "language": "pt", "format": "json"}
+        resp_geo = requests.get(self._geo_url, params=params_geo, timeout=10)
+        resp_geo.raise_for_status()
+        
+        try:
+            resultados = resp_geo.json().get("results", [])
+        except ValueError:
+            raise ValueError("Resposta de geodecodificação não é um JSON válido")
 
-    r = resultados[0]
-    return r["latitude"], r["longitude"]
+        if not resultados:
+            raise ValueError(f"Localidade desconhecida: {cidade}")
 
-# ! ------------
+        lat, lon = resultados[0]["latitude"], resultados[0]["longitude"]
 
-def buscar_previsao(latitude: float, longitude: float):
-    url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "current": "temperature_2m,relative_humidity_2m,rain",
-    }
-    response = requests.get(url, params=params, timeout=10)
-    response.raise_for_status()
+        # Passo 2: Buscar a previsão com a Lat e Lon
+        params_weather = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "temperature_2m,relative_humidity_2m,rain",
+        }
+        resp_weather = requests.get(self._weather_url, params=params_weather, timeout=10)
+        resp_weather.raise_for_status()
 
-    try:
-        return response.json()
-    except ValueError:
-        raise ValueError("Resposta da previsão não é JSON válido")    
-
+        try:
+            return resp_weather.json()
+        except ValueError:
+            raise ValueError("Resposta da previsão não é um JSON válido")
