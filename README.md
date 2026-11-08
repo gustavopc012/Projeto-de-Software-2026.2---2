@@ -1,72 +1,170 @@
-# Sistema de Alertas Meteorológicos Multifonte
-Este projeto é um sistema em Python orientado a objetos desenvolvido para monitorar condições climáticas de múltiplas localidades em tempo real, avaliar níveis de risco meteorológico e gerar relatórios consolidados em diferentes formatos.
+# 🌦️ Sistema de Alertas Meteorológicos Multifonte
 
-## Funcionalidades
-- **RF1 [E] — Dados climáticos protegidos**. Os dados climáticos obtidos da API jamais podem
-existir em estado inválido ou inconsistente.
-- **RF2 [E] — Calculado, não atribuível**. Código externo não pode alterar uma leitura climática
-após a obtenção; valores derivados devem ser calculados.
-- **RF3 [A/H] — Múltiplas categorias de alerta.** O sistema deve suportar pelo menos quatro
-categorias distintas de alerta meteorológico, cada uma avaliando o perigo com critérios próprios
-aplicados aos mesmos dados climáticos.
-- **RF4 [P] — Alertas autodescritivos.** Cada categoria de alerta deve se descrever de forma
-legível e apropriada ao seu tipo quando exibida em uma lista genérica.
-- **RF5 [P] — Avaliação uniforme.** O sistema deve avaliar uma coleção mista de alertas e
-produzir uma avaliação de risco para cada um, sem que a lógica de avaliação saiba qual
-categoria específica está processando.
-- **RF6 [A/IF] — Provedores de dados intercambiáveis**. O sistema deve poder trocar de
-provedor de dados climáticos sem alterações na lógica de avaliação de alertas.
-- **RF7 [C] — Monitoramento de múltiplas localidades.** O sistema deve monitorar várias
-localidades e produzir um único relatório consolidado.
-- **RF8 [X] — Falha graciosa.** O sistema não pode travar quando a API estiver inacessível,
-retornar dados malformados ou for consultada sobre uma localidade inexistente.
-- **RF9 [A] — Múltiplos formatos de relatório.** O sistema deve exportar relatórios em pelo
-menos dois formatos, com a escolha do formato desacoplada da geração do relatório.
-- **RF10 [E] — Cache transparente.** Requisições repetidas para a mesma localidade em um
-curto intervalo não devem sempre gerar nova chamada de rede, e isso deve ser invisível para o
-código solicitante.
+Sistema em Python orientado a objetos que monitora as condições climáticas de várias localidades em tempo real, usando a API gratuita [Open-Meteo](https://open-meteo.com/). Ele avalia níveis de risco meteorológico e gera relatórios consolidados no terminal, em CSV e em JSON.
 
-## Como Executar
+## ▶️ Como executar
 
-1. Certifique-se de ter o Python 3.10+ e a biblioteca `requests` instalados:
-   ```bash
-   pip install requests
+**Pré-requisitos:** Python 3.10+ e conexão com a internet (ou o modo offline, explicado abaixo).
 
--------------------------------------------------------------------------------------------------------------------------
+```bash
+# 1. Entre na pasta do projeto
+cd Projeto-de-Software-2026.2---2
 
-## Padrões de Projeto Criacionais Aplicados (Etapa 2)
+# 2. Instale a única dependência externa
+pip install requests
 
-Nesta etapa, refatoramos o projeto aplicando dois padrões criacionais do catálogo GoF:
+# 3. Execute o sistema
+python main.py
+```
+
+Menu disponível:
+
+| Opção | Ação |
+|---|---|
+| 1 | 📍 Relatório de uma cidade da lista (aceita o nome ou o número) |
+| 2 | 🗺️ Relatório consolidado de todas as cidades no terminal |
+| 3 | 📄 Exporta o relatório consolidado para `relatorio.csv` |
+| 4 | 🧾 Exporta o relatório consolidado para `relatorio.json` |
+| 5 | 🔎 Busca qualquer cidade pelo nome |
+| 6 | 🔒 Demonstra a proteção dos dados (RF1, RF2 e RF4) |
+| 7 | 🚪 Sair |
+
+**Modo offline:** em `main.py`, troque `ProvedorOpenMeteo()` por `ProvedorFicticio()`. O sistema passa a usar dados fixos, o que é útil para apresentar todos os níveis de alerta sem depender do clima real.
+
+**Cidades monitoradas:** edite a lista em `cidades.py`.
+
+## 🧪 Testes e demonstração
+
+```bash
+python demo_rf.py              # demonstra os 10 requisitos em sequência (offline, resultado sempre igual)
+python -m unittest testes -v   # testes automatizados
+```
+
+O documento `Requisitos_e_Padroes.pdf` resume os requisitos, os casos de teste (com a saída real do `demo_rf.py`) e explica os padrões de projeto.
+
+São 22 testes automatizados, que não precisam de internet porque as respostas da API são simuladas. Eles cobrem os 10 requisitos, incluindo:
+
+- API inacessível e *timeout*;
+- cidade inexistente;
+- JSON malformado (corpo que não é JSON, lista no lugar de objeto, campos ausentes ou com texto, falta do bloco `current`);
+- erro HTTP 4xx;
+- estrutura do JSON e do CSV exportados;
+- cache e expiração do TTL;
+- menu com entradas inválidas.
+
+## 📁 Estrutura
+
+| Arquivo | Conteúdo |
+|---|---|
+| `main.py` | Menu, avaliação uniforme dos alertas, coleta das cidades e tratamento de falhas |
+| `classes.py` | Domínio (`LeituraClima`, alertas), provedores, Builder, exportadores, Factory Method e Decorator |
+| `api.py` | `OpenMeteoFacade`: acesso HTTP à Open-Meteo e validação do JSON recebido |
+| `cidades.py` | Lista de localidades monitoradas |
+| `testes.py` | Testes automatizados (`unittest`) |
+| `demo_rf.py` | Roteiro de apresentação dos 10 requisitos |
+
+## ✅ Requisitos funcionais
+
+Cada requisito está marcado no código com um comentário `[RFx]`.
+
+| Requisito | Onde está | Como foi atendido |
+|---|---|---|
+| **RF1 [E]** Dados climáticos protegidos | `LeituraClima.__init__` / `_validar` | Valida presença, tipo numérico, valores finitos e faixas físicas antes de o objeto existir. Uma leitura inválida nunca é criada. |
+| **RF2 [E]** Calculado, não atribuível | `@property` de `LeituraClima`, `sensacao_termica`, `maior_risco` | Os atributos não têm *setter*. A sensação térmica e o maior risco são calculados na hora da leitura. |
+| **RF3 [A/H]** Múltiplas categorias | `Alerta` e 5 subclasses | Calor, Alagamento, Geada, Tempestade e Vento, cada uma com critério próprio sobre a mesma leitura. |
+| **RF4 [P]** Alertas autodescritivos | `Alerta.__str__` | `print(alerta)` mostra o ícone, o nome e o critério de qualquer categoria. |
+| **RF5 [P]** Avaliação uniforme | `avaliar_alertas_ativos` (`main.py`) | Um único laço polimórfico, sem `if` nem `isinstance` por tipo. |
+| **RF6 [A/IF]** Provedores intercambiáveis | `ProvedorClima` e implementações | Trocar o provedor no `main.py` não altera a lógica de alertas. |
+| **RF7 [C]** Múltiplas localidades | `coletar_resultados`, `cidades.py` | Percorre todas as cidades e gera um único relatório consolidado. |
+| **RF8 [X]** Falha graciosa | `coletar_resultados`, `OpenMeteoFacade._get_json`, `ProvedorOpenMeteo` | Rede fora, *timeout*, JSON malformado, cidade inexistente e erro ao salvar o arquivo viram mensagens de erro, e o sistema continua rodando. |
+| **RF9 [A]** Múltiplos formatos | Exportadores Console, CSV e JSON | O formato é escolhido pelo Factory Method, desacoplado da coleta dos dados. |
+| **RF10 [E]** Cache transparente | `ProvedorCache` | Consultas repetidas à mesma cidade dentro de 5 minutos não acessam a rede. A chave ignora maiúsculas e espaços. |
+
+### Formato do JSON exportado
+
+Todo item tem as mesmas chaves, tanto em caso de sucesso quanto de erro. Os alertas vêm ordenados do mais grave para o menos grave.
+
+```json
+{
+    "gerado_em": "2026-11-08T17:27:38",
+    "total_cidades": 4,
+    "resultados": [
+        {
+            "cidade": "Rio Largo",
+            "status": "ok",
+            "localidade": { "nome": "Rio Largo", "regiao": "Alagoas, Brasil" },
+            "leitura": {
+                "temperatura_c": 28.1, "sensacao_termica_c": 29.1,
+                "umidade_pct": 70.0, "chuva_mm": 0.0, "vento_kmh": 19.4
+            },
+            "maior_risco": "BAIXO",
+            "alertas": [
+                { "categoria": "Calor extremo", "nivel": "BAIXO", "mensagem": "Calor de 28.1°C ..." }
+            ],
+            "erro": null
+        },
+        {
+            "cidade": "Atlantida", "status": "erro", "localidade": null, "leitura": null,
+            "maior_risco": null, "alertas": [], "erro": "Localidade desconhecida: 'Atlantida'"
+        }
+    ]
+}
+```
+
+---
+
+## 🏗️ Padrões de projeto criacionais (Etapa 2)
 
 ### 1. Builder (`ResultadoCidade.Builder`)
 
-* **Onde foi aplicado:** Na construção dos objetos imutáveis `ResultadoCidade` (em `classes.py` e utilizado em `coletar_resultados()` no `main.py`).
-* **Problema identificado no código original:** A classe `ResultadoCidade` representava dois cenários distintos (sucesso na leitura climática com alertas ativos ou falha graciosa de rede/validação do RF8) através de um único construtor posicional. Isso obrigava o código cliente a passar argumentos vazios ou nulos sem semântica clara (`ResultadoCidade(cidade, leitura, alertas_ativos, "")` ou `ResultadoCidade(cidade, None, [], str(e))`).
-* **Justificativa e Solução:** Implementamos um `Builder` interno com interface fluente (`.com_leitura()`, `.com_alertas()`, `.com_erro()`, `.build()`). Isso eliminou os parâmetros posicionais nulos/vazios, manteve a imutabilidade de `ResultadoCidade` após sua criação e centralizou a validação de consistência no método `build()` (garantindo que um resultado nunca exista sem leitura e sem erro ao mesmo tempo).
+* **Onde foi aplicado:** na construção dos objetos imutáveis `ResultadoCidade` (em `classes.py`, usado em `coletar_resultados()` no `main.py`).
+* **Problema no código original:** a classe `ResultadoCidade` representava dois cenários (leitura com sucesso ou falha graciosa do RF8) com um único construtor posicional. Isso obrigava o cliente a passar argumentos vazios ou nulos, como em `ResultadoCidade(cidade, None, [], str(e))`.
+* **Solução:** um `Builder` interno com interface fluente (`.com_leitura()`, `.com_alertas()`, `.com_erro()`, `.build()`). Ele elimina os parâmetros nulos, mantém `ResultadoCidade` imutável e centraliza a validação no `build()`. Assim, um resultado nunca tem leitura e erro ao mesmo tempo, nem fica sem nenhum dos dois.
 
 ### 2. Factory Method (`GeradorRelatorioCreator`)
 
-* **Onde foi aplicado:** Na hierarquia de geração e exportação de relatórios do RF9 (`GeradorRelatorioCreator` e suas subclasses `GeradorConsoleCreator`, `GeradorCSVCreator` e `GeradorJSONCreator` em `classes.py`).
-* **Problema identificado no código original:** O código cliente (`main.py`) estava diretamente acoplado às classes concretas de exportação (`ExportadorConsole`, `ExportadorCSV`, `ExportadorJSON`), instanciando-as manualmente dentro de blocos condicionais (`if/elif`) no loop principal.
-* **Justificativa e Solução:** Criamos a classe abstrata `GeradorRelatorioCreator` contendo o **Factory Method** `criar_exportador()` e o método de operação `gerar_relatorio()`. Cada formato ganhou seu próprio `ConcreteCreator`. Assim, o `main.py` deixou de conhecer e importar as classes concretas dos exportadores, permitindo adicionar novos formatos de exportação no futuro (ex.: PDF ou HTML) apenas criando uma nova subclasse de `Creator`, sem modificar a lógica de execução do relatório.
+* **Onde foi aplicado:** na geração de relatórios do RF9 (`GeradorConsoleCreator`, `GeradorCSVCreator` e `GeradorJSONCreator`).
+* **Problema no código original:** o `main.py` instanciava diretamente os exportadores concretos dentro de blocos `if/elif`.
+* **Solução:** a classe abstrata `GeradorRelatorioCreator` declara o Factory Method `criar_exportador()`, e cada formato tem seu próprio Creator concreto. Para criar um novo formato (PDF, HTML), basta criar uma nova subclasse, sem mexer no `main.py`.
 
---------------------------------------------------------------------------------------------------------------------------
+---
 
-## Padrões de Projeto Estruturais Aplicados (Etapa 3)
-
-Após a aula sobre Padrões Estruturais, identificamos pontos no sistema onde a composição de classes poderia reduzir o acoplamento com a rede e melhorar a flexibilidade, aplicando **três** padrões estruturais do catálogo GoF:
+## 🧱 Padrões de projeto estruturais (Etapa 3)
 
 ### 1. Facade (`OpenMeteoFacade` em `api.py`)
-* **Problema atacado:** O fluxo para consultar o clima na API do Open-Meteo era complexo e fragmentado. Primeiro, exigia-se uma chamada HTTP de geocodificação para transformar o nome da cidade em Latitude/Longitude. Com as coordenadas em mãos, era necessária uma segunda chamada HTTP para obter o clima em si. Isso gerava um conhecimento excessivo sobre o funcionamento do subsistema espalhado no código.
-* **Método usado:** Criamos a classe `OpenMeteoFacade` com um único método `obter_clima_completo(cidade)`, que orquestra as duas requisições internamente.
-* **Porquê escolhemos:** O Facade forneceu uma "porta de entrada simples para um subsistema complicado". Ele isola toda a complexidade de rotas, navegação em URLs e tratamento de JSON, oferecendo ao restante da aplicação uma interface clara e de alto nível.
+
+* **Problema:** consultar o clima exige duas chamadas HTTP (a geocodificação, que transforma o nome em latitude/longitude, e depois a previsão), além do tratamento do JSON de cada uma.
+* **Solução:** um único método, `obter_clima_completo(cidade)`, orquestra as duas chamadas. Ele também valida o JSON recebido (`_get_json`) e devolve sempre um dicionário no mesmo formato.
+* **Por que escolhemos:** o Facade oferece uma porta de entrada simples para um subsistema complicado. URLs, parâmetros e erros HTTP ficam isolados em um só lugar.
 
 ### 2. Adapter (`ProvedorOpenMeteo` em `classes.py`)
-* **Problema atacado:** O núcleo do nosso sistema de Alertas foi desenhado para avaliar objetos de domínio altamente validados (`LeituraClima`). Contudo, o Facade da API externa retorna um Dicionário cru (JSON) com chaves muito específicas (`temperature_2m`, `relative_humidity_2m`).
-* **Método usado:** O `ProvedorOpenMeteo` foi construído como um **Adapter** de Objeto. Ele assina o contrato esperado pelo sistema (a interface `ProvedorClima`), abraça o Facade (o *Adaptee*) e traduz o JSON em instâncias de `LeituraClima`.
-* **Porquê escolhemos:** O Adapter resolve a incompatibilidade estrutural. Ele atua como uma fronteira: o nosso sistema não sabe o que é JSON e a API não sabe o que é `LeituraClima`. O acoplamento com o provedor fica inteiramente contido nessa classe.
 
-### 3. Proxy (`ProvedorCache` em `classes.py` resolvendo o RF10)
-* **Problema atacado:** Consultar APIs externas gasta banda, atrasa a execução e frequentemente esbarra em *rate limits* (bloqueios por excesso de chamadas). Precisávamos mitigar isso sem poluir a rotina principal (que apenas solicita os dados).
-* **Método usado:** Formalizamos a classe `ProvedorCache` como um **Virtual/Caching Proxy**. Ela herda da mesma abstração `ProvedorClima` do provedor real, mas seu comportamento intercepta o método `obter_leitura`.
-* **Porquê escolhemos:** Segundo a definição GoF, o Proxy "controla o acesso ao objeto real". Quando o `main.py` pede o clima de uma cidade, o Proxy avalia se já tem o dado em memória dentro do seu tempo de vida (TTL). Se tiver, ele "mente" para o cliente e devolve a resposta instantaneamente sem bater na rede; caso contrário, delega ao provedor real de forma completamente invisível, cumprindo perfeitamente a exigência técnica do Requisito Funcional 10.
+* **Problema:** o domínio trabalha com objetos validados (`LeituraClima`), mas a API devolve um dicionário cru, com chaves como `temperature_2m` e `relative_humidity_2m`.
+* **Solução:** um Adapter de objeto que implementa a interface `ProvedorClima` (Target), envolve o Facade (Adaptee) e traduz o JSON para `LeituraClima`.
+* **Por que escolhemos:** ele resolve a incompatibilidade de interfaces e concentra o acoplamento com a API em uma única classe.
+
+### 3. Proxy (`ProvedorCache` em `classes.py`, que atende o RF10)
+
+* **Problema:** chamadas repetidas à API gastam banda, atrasam a execução e podem esbarrar em *rate limits*.
+* **Solução:** um Caching Proxy com a mesma interface `ProvedorClima`. Se a cidade estiver no cache dentro do TTL, ele responde da memória; se não, delega ao provedor real.
+* **Por que escolhemos:** o Proxy controla o acesso ao objeto real sem que o cliente perceba, exatamente como o RF10 exige.
+
+### 4. Decorator (`ExportadorComResumo` em `classes.py`)
+
+* **Problema:** queríamos exibir um resumo do relatório (total de cidades, quantas têm alerta, quantas deram erro e o maior risco encontrado) depois de **qualquer** exportação. Fazer isso dentro de cada exportador duplicaria código. Criar subclasses (`ExportadorCSVComResumo`, `ExportadorJSONComResumo`...) multiplicaria as classes.
+* **Solução:** `ExportadorComResumo` implementa a mesma interface `ExportadorRelatorio` e **envolve** outro exportador. Ele repassa a chamada `exportar()` ao objeto decorado e depois acrescenta o resumo. O decorador é aplicado em `GeradorRelatorioCreator.gerar_relatorio()` sempre que o Creator é criado com `com_resumo=True`, que é o padrão.
+* **Por que escolhemos:** o Decorator adiciona responsabilidade a um objeto por composição, em tempo de execução, sem alterar as classes existentes (princípio aberto/fechado). O mesmo decorador funciona com Console, CSV e JSON, e com qualquer formato futuro.
+* **Diferença em relação ao Proxy:** os dois envolvem um objeto com a mesma interface. O Proxy **controla o acesso** ao objeto real (pode nem chamá-lo, como no cache). O Decorator **sempre delega** e **acrescenta comportamento**.
+
+---
+
+## 🔧 Correções da revisão
+
+* Removido o import de funções inexistentes em `api.py` (`obter_localizacao_cidade`, `buscar_previsao`), que impedia o sistema de iniciar.
+* **Manipulação do JSON da API:** a resposta passou a ser validada em cada etapa (corpo JSON válido, tipo `dict`, lista `results`, coordenadas numéricas, bloco `current`). Erros 4xx exibem o motivo informado pela API.
+* **Validação dos dados:** valores em texto, booleanos, `NaN` e infinitos agora são rejeitados (antes, um texto causava `TypeError` e travava o sistema).
+* **Formação dos JSONs exportados:** estrutura com metadados (`gerado_em`, `total_cidades`), chaves iguais para sucesso e erro, unidades no nome dos campos e alertas separados em `categoria`, `nivel` e `mensagem`, sem emojis nos dados.
+* `AlertaVento` passou a usar a velocidade real do vento (`wind_speed_10m`), em vez do volume de chuva.
+* A localidade encontrada (estado e país) aparece no relatório, para mostrar qual cidade a API realmente encontrou.
+* Entrada vazia, Ctrl+C/Ctrl+D e erro ao salvar o arquivo (por exemplo, CSV aberto no Excel) não derrubam mais o programa.
+* O cache ignora diferenças de maiúsculas e espaços (`"Maceió"` e `" maceió "` usam a mesma entrada).
