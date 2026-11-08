@@ -156,15 +156,4 @@ Todo item tem as mesmas chaves, tanto em caso de sucesso quanto de erro. Os aler
 * **Por que escolhemos:** o Decorator adiciona responsabilidade a um objeto por composição, em tempo de execução, sem alterar as classes existentes (princípio aberto/fechado). O mesmo decorador funciona com Console, CSV e JSON, e com qualquer formato futuro.
 * **Diferença em relação ao Proxy:** os dois envolvem um objeto com a mesma interface. O Proxy **controla o acesso** ao objeto real (pode nem chamá-lo, como no cache). O Decorator **sempre delega** e **acrescenta comportamento**.
 
----
 
-## 🔧 Correções da revisão
-
-* Removido o import de funções inexistentes em `api.py` (`obter_localizacao_cidade`, `buscar_previsao`), que impedia o sistema de iniciar.
-* **Manipulação do JSON da API:** a resposta passou a ser validada em cada etapa (corpo JSON válido, tipo `dict`, lista `results`, coordenadas numéricas, bloco `current`). Erros 4xx exibem o motivo informado pela API.
-* **Validação dos dados:** valores em texto, booleanos, `NaN` e infinitos agora são rejeitados (antes, um texto causava `TypeError` e travava o sistema).
-* **Formação dos JSONs exportados:** estrutura com metadados (`gerado_em`, `total_cidades`), chaves iguais para sucesso e erro, unidades no nome dos campos e alertas separados em `categoria`, `nivel` e `mensagem`, sem emojis nos dados.
-* `AlertaVento` passou a usar a velocidade real do vento (`wind_speed_10m`), em vez do volume de chuva.
-* A localidade encontrada (estado e país) aparece no relatório, para mostrar qual cidade a API realmente encontrou.
-* Entrada vazia, Ctrl+C/Ctrl+D e erro ao salvar o arquivo (por exemplo, CSV aberto no Excel) não derrubam mais o programa.
-* O cache ignora diferenças de maiúsculas e espaços (`"Maceió"` e `" maceió "` usam a mesma entrada).
