@@ -1,5 +1,9 @@
 import sys
-
+from observadores import (
+    CentralNotificacoes,
+    DefesaCivilNotifier,
+    LogAuditoria
+)
 import requests
 
 from cidades import cidades
@@ -30,19 +34,44 @@ provedor: ProvedorClima = ProvedorCache(provedor_base, ttl_segundos=300)
 alertas: list[Alerta] = [AlertaCalor(), AlertaAlagamento(), AlertaGeada(), AlertaTempestade(), AlertaVento()]
 
 
-def avaliar_alertas_ativos(leitura: LeituraClima) -> list[AlertaAtivo]:
-    # [RF5] Avaliação uniforme: o mesmo laço trata todos os alertas pela
-    # interface Alerta (polimorfismo), sem saber qual categoria concreta está
-    # sendo processada. Não há if/isinstance por tipo.
+def avaliar_alertas_ativos(
+    leitura: LeituraClima,
+    cidade: str,
+    central_alertas: CentralNotificacoes
+) -> list[AlertaAtivo]:
+
+    # [RF5] Avaliação uniforme através de polimorfismo.
     ativos = []
+
     for alerta in alertas:
         nivel = alerta.avaliar_risco(leitura)
+
         if nivel != NivelRisco.NENHUM:
-            ativos.append(AlertaAtivo(alerta.nome, alerta.icone, nivel, alerta.mensagem_alerta(leitura)))
+            ativos.append(
+                AlertaAtivo(
+                    alerta.nome,
+                    alerta.icone,
+                    nivel,
+                    alerta.mensagem_alerta(leitura)
+                )
+            )
+
+            # [Observer] Notifica os observadores em riscos ALTO ou CRÍTICO.
+            if nivel in (NivelRisco.ALTO, NivelRisco.CRITICO):
+                central_alertas.notificar_todos(
+                    cidade,
+                    alerta.nome,
+                    nivel.name
+                )
+
     return ativos
 
 
-def coletar_resultados(provedor: ProvedorClima, lista_cidades: list[str]) -> list[ResultadoCidade]:
+def coletar_resultados(
+    provedor: ProvedorClima,
+    lista_cidades: list[str],
+    central_alertas: CentralNotificacoes
+) -> list[ResultadoCidade]:
     # [RF7] Monitoramento de múltiplas localidades: percorre todas as cidades
     # e junta os resultados em uma única lista, usada no relatório consolidado.
     resultados = []
@@ -50,7 +79,7 @@ def coletar_resultados(provedor: ProvedorClima, lista_cidades: list[str]) -> lis
         builder = ResultadoCidade.Builder(cidade)  # PADRÃO BUILDER
         try:
             leitura = provedor.obter_leitura(cidade)
-            resultado = builder.com_leitura(leitura).com_alertas(avaliar_alertas_ativos(leitura)).build()
+            resultado = builder.com_leitura(leitura).com_alertas(avaliar_alertas_ativos(leitura, cidade, central_alertas)).build()
         # [RF8] Falha graciosa: cada falha vira um ResultadoCidade com erro e
         # o laço segue para a próxima cidade. O sistema nunca trava.
         except requests.Timeout:
@@ -67,9 +96,13 @@ def coletar_resultados(provedor: ProvedorClima, lista_cidades: list[str]) -> lis
     return resultados
 
 
-def executar_relatorio(criador: GeradorRelatorioCreator, lista_cidades: list[str]) -> None:
+def executar_relatorio(
+    criador: GeradorRelatorioCreator,
+    lista_cidades: list[str],
+    central_alertas: CentralNotificacoes
+) -> None:
     # Cliente do FACTORY METHOD: conhece apenas a abstração do Creator.
-    resultados = coletar_resultados(provedor, lista_cidades)
+    resultados = coletar_resultados(provedor, lista_cidades, central_alertas)
     try:
         criador.gerar_relatorio(resultados)
     except OSError as e:  # [RF8] ex.: arquivo aberto no Excel, sem permissão
@@ -134,6 +167,12 @@ def exibir_menu() -> None:
 
 
 def main() -> None:
+
+    # [Observer] Central única de notificações durante a execução.
+    central_alertas = CentralNotificacoes()
+    central_alertas.inscrever(DefesaCivilNotifier())
+    central_alertas.inscrever(LogAuditoria())
+
     # Mapa de Creators (Factory Method) para os relatórios consolidados
     criadores_consolidados = {
         "2": GeradorConsoleCreator(),
@@ -155,18 +194,18 @@ def main() -> None:
             texto = ler_entrada("👉 Digite o nome ou número da cidade: ") or ""
             cidade = localizar_cidade(texto)
             if cidade:
-                executar_relatorio(criador_individual, [cidade])
+                executar_relatorio(criador_individual, [cidade], central_alertas)
             else:
                 print(f"\n⚠️  A cidade '{texto}' não está na lista. Use a opção 5 para outras cidades.")
 
         elif escolha in criadores_consolidados:
             print("\n⏳ Consultando as cidades monitoradas...")
-            executar_relatorio(criadores_consolidados[escolha], cidades)
+            executar_relatorio(criadores_consolidados[escolha], cidades, central_alertas)
 
         elif escolha == "5":
             texto = ler_entrada("👉 Digite o nome da cidade: ")
             if texto:
-                executar_relatorio(criador_individual, [texto])
+                executar_relatorio(criador_individual, [texto], central_alertas)
             else:
                 print("\n⚠️  O nome da cidade não pode ficar vazio.")
 
