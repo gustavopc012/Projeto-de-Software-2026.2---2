@@ -156,4 +156,29 @@ Todo item tem as mesmas chaves, tanto em caso de sucesso quanto de erro. Os aler
 * **Por que escolhemos:** o Decorator adiciona responsabilidade a um objeto por composição, em tempo de execução, sem alterar as classes existentes (princípio aberto/fechado). O mesmo decorador funciona com Console, CSV e JSON, e com qualquer formato futuro.
 * **Diferença em relação ao Proxy:** os dois envolvem um objeto com a mesma interface. O Proxy **controla o acesso** ao objeto real (pode nem chamá-lo, como no cache). O Decorator **sempre delega** e **acrescenta comportamento**.
 
+## 🔔 Padrões de projeto comportamentais (Etapa 4)
+
+### 1. Observer (`CentralNotificacoes` em `observadores.py`)
+
+* **Onde foi aplicado:** no gerenciamento das notificações de risco climático, utilizando a interface `ObservadorRisco`, os observadores concretos `DefesaCivilNotifier` e `LogAuditoria`, e a classe `CentralNotificacoes`.
+
+* **Problema no código original:** a identificação de riscos climáticos pode exigir diferentes ações, como registrar eventos severos e emitir notificações. Se a lógica de análise precisasse chamar diretamente cada mecanismo de resposta, ficaria fortemente acoplada aos componentes de notificação. A inclusão de novos mecanismos também exigiria alterações na lógica principal.
+
+* **Solução:** a classe `ObservadorRisco` define a interface `atualizar()`, implementada pelos observadores concretos. A `CentralNotificacoes` mantém uma lista de observadores inscritos, permitindo inscrever (`inscrever`), cancelar inscrições (`cancelar`) e notificar todos (`notificar_todos`). No `main.py`, a central é criada e recebe os observadores `DefesaCivilNotifier` e `LogAuditoria`. Quando a análise identifica um risco de nível ALTO ou CRÍTICO, a central notifica os observadores registrados.
+
+* **Por que escolhemos:** o Observer permite separar a identificação dos riscos das ações executadas em resposta a eles. Dessa forma, novos observadores podem ser adicionados sem modificar diretamente a lógica de análise climática, reduzindo o acoplamento e facilitando a manutenção e a expansão do sistema.
+
+* **Comportamento dos observadores:**
+  * `DefesaCivilNotifier`: simula uma notificação à Defesa Civil somente quando o risco é CRÍTICO.
+  * `LogAuditoria`: registra eventos classificados como ALTO ou CRÍTICO.
+
+  **Observação:** a comunicação com a Defesa Civil é simulada no terminal, não existe integração real com órgãos externos.
+
+* **Fluxo de funcionamento:**
+  1. O sistema consulta as condições climáticas de uma cidade.
+  2. Os alertas avaliam o nível de risco identificado.
+  3. Quando o risco é ALTO ou CRÍTICO, a `CentralNotificacoes` é acionada.
+  4. A central percorre os observadores inscritos e chama o método `atualizar()`.
+  5. Cada observador executa sua própria responsabilidade, conforme o nível de risco recebido.
+
 
